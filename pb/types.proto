@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package pb;
+
+option java_package = "com.zhigui.crossmesh.proto";
+
+import "google/protobuf/timestamp.proto";
+
+message Lock {
+    TransactionID primary_prepare_tx_id = 1;
+    bytes prev_state = 2;
+    bytes updating_state = 3;
+}
+
+message GlobalTransaction {
+    TransactionID primary_prepare_tx_id = 1;
+    BranchTransaction primary_commit_tx = 2;
+    BranchTransaction primary_rollback_tx = 3;
+    repeated BranchTransaction branch_prepare_txs = 4;
+    repeated BranchTransaction branch_commit_txs = 5;
+    repeated BranchTransaction branch_rollback_txs = 6;
+    uint64 ttl_height = 7;
+    google.protobuf.Timestamp ttl_time = 8;
+}
+
+message Invocation {
+    string contract = 1;
+    string func = 2;
+    repeated bytes args = 3;
+}
+
+message BranchTransaction {
+    TransactionID tx_id = 1;
+    Invocation invocation = 2;
+}
+
+message BranchTransactionResponse {
+    string id = 1;
+    enum Status {
+        SUCCESS = 0;
+        FAILED = 1;
+    }
+    Status status = 2;
+    bytes proof = 3;
+}
+
+enum GlobalTransactionStatusType {
+    INIT = 0;
+    PRIMARY_TRANSACTION_PREPARED = 1;
+    PRIMARY_TRANSACTION_COMMITTED = 2;
+    PRIMARY_TRANSACTION_CANCELED = 3;
+}
+
+message PrimaryLockMeta {
+    string xid = 1;
+    string chain = 2;
+}
+
+message URI {
+    string network = 1;
+    string chain = 2;
+}
+
+message TransactionID {
+    URI uri = 1;
+    string id = 2;
+}
+
+message PrimaryTransactionPreparedEvent {
+    TransactionID primary_prepare_tx_id = 1;
+
+    BranchTransaction primary_commit_tx = 2;
+    BranchTransaction primary_rollback_tx = 3;
+
+    repeated BranchTransaction branch_prepare_txs = 4;
+}
+
+message PrimaryTransactionConfirmedEvent {
+    TransactionID primary_confirm_tx_id = 1;
+    repeated BranchTransaction branch_commit_or_rollback_txs = 2;
+}
+
+message BranchTransactionPreparedEvent {
+    TransactionID primary_prepare_tx_id = 1;
+
+    BranchTransaction commit_tx = 2;
+    BranchTransaction rollback_tx = 3;
+}
+
+message GlobalTransactionStatus {
+    TransactionID primary_prepare_tx_id = 1;
+    GlobalTransactionStatusType status = 2;
+}
+
+message VerifyInfo {
+    string Contract = 1;
+    string function = 2;
+}

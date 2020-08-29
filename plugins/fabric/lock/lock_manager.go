@@ -29,7 +29,7 @@ type ManagerImpl struct {
 	ClientIdentity cid.ClientIdentity
 }
 
-func (lockManager *ManagerImpl) GetStateOrReleaseExpiredLock(key string) ([]byte, error) {
+func (lockManager *ManagerImpl) GetStateWithLock(key string) ([]byte, error) {
 	for {
 		existValue, err := lockManager.Stub.GetState(key)
 		maybeLock := &pb.Lock{}

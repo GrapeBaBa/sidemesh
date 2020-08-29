@@ -1,40 +1,10 @@
 package sidemesh
 
 import (
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"github.com/zhigui-projects/sidemesh/pb"
 )
 
-type XABranchTransaction struct {
-	PrepareTx  *BranchTransaction `json:"prepare_tx"`
-	CommitTx   *BranchTransaction `json:"commit_tx"`
-	RollbackTx *BranchTransaction `json:"rollback_tx"`
-	ChainType  string
-}
-
-type BranchTransaction struct {
-	Network  string   `json:"network"`
-	Chain    string   `json:"chain"`
-	Contract string   `json:"contract"`
-	Function string   `json:"function"`
-	Args     [][]byte `json:"args"`
-}
-
-type BranchTransactionResult struct {
-	Network     string `json:"network"`
-	Chain       string `json:"chain"`
-	PrepareTxID string `json:"prepare_tx_id"`
-
-	Proof []byte `json:"proof"`
-}
-
-type ConfirmGlobalTransactionRequest struct {
-	Network                  string                     `json:"network"`
-	Chain                    string                     `json:"chain"`
-	PrimaryPrepareTxID       string                     `json:"primary_prepare_tx_id"`
-	IsCommit                 bool                       `json:"is_commit"`
-	BranchTransactionResults []*BranchTransactionResult `json:"branch_transaction_results"`
-}
+const SideMeshPrefix string = "SIDE_MESH_"
 
 type VerifyInfo struct {
 	Contract string `json:"contract"`
@@ -42,13 +12,16 @@ type VerifyInfo struct {
 }
 
 type GlobalTransactionManager interface {
-	StartGlobalTransaction(ttlHeight uint64, ttlTime *timestamp.Timestamp) error
-	RegisterBranchTransaction(xaBranchTx *XABranchTransaction) error
-	PreparePrimaryTransaction(xaBranchTx *XABranchTransaction) error
-	ConfirmPrimaryTransaction(request ConfirmGlobalTransactionRequest) error
+	StartGlobalTransaction(ttlHeight uint64, ttlTime string) error
+	RegisterBranchTransaction(network string, chain string, contract string, function string, args []string) error
+	PreparePrimaryTransaction() error
+	StartBranchTransaction(primaryNetwork string, primaryChain string, primaryTxID string, primaryTxProof string) error
+	PrepareBranchTransaction(primaryNetwork string, primaryChain string, primaryTxID string, globalTxQueryContract string, globalTxQueryFunc string) error
+	ConfirmPrimaryTransaction(primaryPrepareTxID string, branchTxRes [][]string) error
+	ConfirmBranchTransaction(globalTxStatus int, branchPrepareTxID string, primaryNetwork string, primaryChain string, primaryConfirmTxID string, primaryConfirmTxProof string) error
 }
 
 type LockManager interface {
 	PutStateWithLock(key string, value []byte, primaryPrepareTxId *pb.TransactionID) error
-	GetStateOrReleaseExpiredLock(key string) ([]byte, error)
+	GetStateWithLock(key string) ([]byte, error)
 }

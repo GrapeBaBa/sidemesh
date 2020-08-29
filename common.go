@@ -18,7 +18,7 @@ type GlobalTransactionManager interface {
 	StartBranchTransaction(primaryNetwork string, primaryChain string, primaryTxID string, primaryTxProof string) error
 	PrepareBranchTransaction(primaryNetwork string, primaryChain string, primaryTxID string, globalTxQueryContract string, globalTxQueryFunc string) error
 	ConfirmPrimaryTransaction(primaryPrepareTxID string, branchTxRes [][]string) error
-	ConfirmBranchTransaction(globalTxStatus int, branchPrepareTxID string, primaryNetwork string, primaryChain string, primaryConfirmTxID string, primaryConfirmTxProof string) error
+	ConfirmBranchTransaction(branchPrepareTxID string, globalTxStatus int, primaryNetwork string, primaryChain string, primaryConfirmTxID string, primaryConfirmTxProof string) error
 }
 
 type LockManager interface {

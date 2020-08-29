@@ -87,6 +87,7 @@ message PrimaryTransactionConfirmedEvent {
 message BranchTransactionPreparedEvent {
     TransactionID primary_prepare_tx_id = 1;
     Invocation global_tx_status_query = 2;
+    BranchTransaction confirm_tx = 3;
 }
 
 message GlobalTransactionStatus {

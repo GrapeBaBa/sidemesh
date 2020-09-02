@@ -1,10 +1,6 @@
 package sidemesh
 
-import (
-	"github.com/zhigui-projects/sidemesh/pb"
-)
-
-const SideMeshPrefix string = "SIDE_MESH_"
+const Prefix string = "SIDE_MESH_"
 
 type VerifyInfo struct {
 	Contract string `json:"contract"`
@@ -22,6 +18,7 @@ type GlobalTransactionManager interface {
 }
 
 type LockManager interface {
-	PutStateWithLock(key string, value []byte, primaryPrepareTxId *pb.TransactionID) error
+	PutStateWithPrimaryLock(key string, value []byte) error
+	PutStateWithBranchLock(key string, value []byte, primaryNetwork string, primaryChain string, primaryTxID string) error
 	GetStateWithLock(key string) ([]byte, error)
 }

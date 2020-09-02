@@ -10,7 +10,7 @@ type Registry struct {
 }
 
 func (resourceRegistry *Registry) Register(ctx contractapi.TransactionContextInterface, network string, chain string, connection string) error {
-	uri := sidemesh.SideMeshPrefix + network + chain + ":connection"
+	uri := sidemesh.Prefix + network + chain + ":connection"
 	err := ctx.GetStub().PutState(uri, []byte(connection))
 	if err != nil {
 		return err
@@ -20,7 +20,7 @@ func (resourceRegistry *Registry) Register(ctx contractapi.TransactionContextInt
 }
 
 func (resourceRegistry *Registry) Resolve(ctx contractapi.TransactionContextInterface, network string, chain string) (string, error) {
-	uri := sidemesh.SideMeshPrefix + network + chain + ":connection"
+	uri := sidemesh.Prefix + network + chain + ":connection"
 	conn, err := ctx.GetStub().GetState(uri)
 	return string(conn), err
 }

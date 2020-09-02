@@ -68,11 +68,11 @@ type GlobalTransactionManagerImpl struct {
 }
 
 func (gtxm *GlobalTransactionManagerImpl) StartGlobalTransaction(ttlHeight uint64, ttlTime string) error {
-	network, err := gtxm.stub.GetState(sidemesh.SideMeshPrefix + "NetworkID")
+	network, err := gtxm.stub.GetState(sidemesh.Prefix + "NetworkID")
 	if err != nil {
 		return err
 	}
-	xidKey := sidemesh.SideMeshPrefix + string(network) + gtxm.stub.GetChannelID() + gtxm.stub.GetTxID()
+	xidKey := sidemesh.Prefix + string(network) + gtxm.stub.GetChannelID() + gtxm.stub.GetTxID()
 	xid := &pb.TransactionID{Uri: &pb.URI{Network: string(network), Chain: gtxm.stub.GetChannelID()}, Id: gtxm.stub.GetTxID()}
 	if ttlTime == "" && ttlHeight <= 0 {
 		return errors.New("ttlHeight and ttlTime at least one should be set")
@@ -114,11 +114,11 @@ func (gtxm *GlobalTransactionManagerImpl) StartGlobalTransaction(ttlHeight uint6
 }
 
 func (gtxm *GlobalTransactionManagerImpl) RegisterBranchTransaction(network string, chain string, contract string, function string, args []string) error {
-	primaryNetwork, err := gtxm.stub.GetState(sidemesh.SideMeshPrefix + "NetworkID")
+	primaryNetwork, err := gtxm.stub.GetState(sidemesh.Prefix + "NetworkID")
 	if err != nil {
 		return err
 	}
-	xidKey := sidemesh.SideMeshPrefix + string(primaryNetwork) + gtxm.stub.GetChannelID() + gtxm.stub.GetTxID()
+	xidKey := sidemesh.Prefix + string(primaryNetwork) + gtxm.stub.GetChannelID() + gtxm.stub.GetTxID()
 
 	globalTx := gtxm.globalTransactions[xidKey]
 
@@ -129,11 +129,11 @@ func (gtxm *GlobalTransactionManagerImpl) RegisterBranchTransaction(network stri
 }
 
 func (gtxm *GlobalTransactionManagerImpl) PreparePrimaryTransaction() error {
-	network, err := gtxm.stub.GetState(sidemesh.SideMeshPrefix + "NetworkID")
+	network, err := gtxm.stub.GetState(sidemesh.Prefix + "NetworkID")
 	if err != nil {
 		return err
 	}
-	xidKey := sidemesh.SideMeshPrefix + string(network) + gtxm.stub.GetChannelID() + gtxm.stub.GetTxID()
+	xidKey := sidemesh.Prefix + string(network) + gtxm.stub.GetChannelID() + gtxm.stub.GetTxID()
 	globalTx := gtxm.globalTransactions[xidKey]
 
 	// Get Caller function name, this function should be invoked in cross chain prepare function, so that cross chain prepare function will be got.
@@ -167,7 +167,7 @@ func (gtxm *GlobalTransactionManagerImpl) PreparePrimaryTransaction() error {
 	if err != nil {
 		return err
 	}
-	err = gtxm.stub.SetEvent(sidemesh.SideMeshPrefix+"PRIMARY_TRANSACTION_PREPARED_EVENT", primaryTxPreparedEventBytes)
+	err = gtxm.stub.SetEvent(sidemesh.Prefix+"PRIMARY_TRANSACTION_PREPARED_EVENT", primaryTxPreparedEventBytes)
 	if err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func (gtxm *GlobalTransactionManagerImpl) StartBranchTransaction(primaryNetwork 
 }
 
 func (gtxm *GlobalTransactionManagerImpl) PrepareBranchTransaction(primaryNetwork string, primaryChain string, primaryTxID string, globalTxQueryContract string, globalTxQueryFunc string) error {
-	network, err := gtxm.stub.GetState(sidemesh.SideMeshPrefix + "NetworkID")
+	network, err := gtxm.stub.GetState(sidemesh.Prefix + "NetworkID")
 	if err != nil {
 		return err
 	}
@@ -225,7 +225,7 @@ func (gtxm *GlobalTransactionManagerImpl) PrepareBranchTransaction(primaryNetwor
 	if err != nil {
 		return err
 	}
-	err = gtxm.stub.SetEvent(sidemesh.SideMeshPrefix+"BRANCH_TRANSACTION_PREPARED_EVENT", branchTxPreparedEventBytes)
+	err = gtxm.stub.SetEvent(sidemesh.Prefix+"BRANCH_TRANSACTION_PREPARED_EVENT", branchTxPreparedEventBytes)
 	if err != nil {
 		return err
 	}
@@ -233,11 +233,11 @@ func (gtxm *GlobalTransactionManagerImpl) PrepareBranchTransaction(primaryNetwor
 }
 
 func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepareTxID string, branchTxRes [][]string) error {
-	network, err := gtxm.stub.GetState(sidemesh.SideMeshPrefix + "NetworkID")
+	network, err := gtxm.stub.GetState(sidemesh.Prefix + "NetworkID")
 	if err != nil {
 		return err
 	}
-	xidKey := sidemesh.SideMeshPrefix + string(network) + gtxm.stub.GetChannelID() + primaryPrepareTxID
+	xidKey := sidemesh.Prefix + string(network) + gtxm.stub.GetChannelID() + primaryPrepareTxID
 	globalChainTxStatusBytes, err := gtxm.stub.GetState(xidKey + ":status")
 	if err != nil {
 		return err
@@ -454,7 +454,7 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 	if err != nil {
 		return err
 	}
-	err = gtxm.stub.SetEvent(sidemesh.SideMeshPrefix+"PRIMARY_TRANSACTION_CONFIRMED_EVENT", primaryTxConfirmedEventBytes)
+	err = gtxm.stub.SetEvent(sidemesh.Prefix+"PRIMARY_TRANSACTION_CONFIRMED_EVENT", primaryTxConfirmedEventBytes)
 	if err != nil {
 		return err
 	}

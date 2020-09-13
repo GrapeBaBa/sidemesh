@@ -42,7 +42,7 @@ type GlobalTransactionContext struct {
 func (gtxc *GlobalTransactionContext) GetGlobalTransactionManager() sidemesh.GlobalTransactionManager {
 	if gtxc.globalTxMgr == nil {
 		gtxc.once.Do(func() {
-			gtxc.globalTxMgr = &GlobalTransactionManagerImpl{stub: gtxc.GetStub(), clientIdentity: gtxc.GetClientIdentity()}
+			gtxc.globalTxMgr = &GlobalTransactionManagerImpl{stub: gtxc.GetStub(), clientIdentity: gtxc.GetClientIdentity(), globalTransactions: make(map[string]*pb.GlobalTransaction)}
 			gtxc.lockMgr = &lock.ManagerImpl{Stub: gtxc.GetStub(), ClientIdentity: gtxc.GetClientIdentity()}
 		})
 	}
@@ -53,7 +53,7 @@ func (gtxc *GlobalTransactionContext) GetGlobalTransactionManager() sidemesh.Glo
 func (gtxc *GlobalTransactionContext) GetLockManager() sidemesh.LockManager {
 	if gtxc.lockMgr == nil {
 		gtxc.once.Do(func() {
-			gtxc.globalTxMgr = &GlobalTransactionManagerImpl{stub: gtxc.GetStub(), clientIdentity: gtxc.GetClientIdentity()}
+			gtxc.globalTxMgr = &GlobalTransactionManagerImpl{stub: gtxc.GetStub(), clientIdentity: gtxc.GetClientIdentity(), globalTransactions: make(map[string]*pb.GlobalTransaction)}
 			gtxc.lockMgr = &lock.ManagerImpl{Stub: gtxc.GetStub(), ClientIdentity: gtxc.GetClientIdentity()}
 		})
 	}

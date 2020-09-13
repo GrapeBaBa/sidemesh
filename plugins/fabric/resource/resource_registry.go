@@ -1,8 +1,10 @@
 package resource
 
 import (
+	"github.com/golang/protobuf/proto"
 	"github.com/hyperledger/fabric-contract-api-go/contractapi"
 	"github.com/zhigui-projects/sidemesh"
+	"github.com/zhigui-projects/sidemesh/pb"
 )
 
 type Registry struct {
@@ -15,8 +17,12 @@ func (resourceRegistry *Registry) Register(ctx contractapi.TransactionContextInt
 	if err != nil {
 		return err
 	}
-
-	return ctx.GetStub().SetEvent("RESOURCE_REGISTERED_EVENT", []byte(connection))
+	event := &pb.ResourceRegisteredOrUpdatedEvent{Uri: &pb.URI{Network: network, Chain: chain}, Connection: []byte(connection), Type: pb.ChainType_FABRIC}
+	eventBytes, err := proto.Marshal(event)
+	if err != nil {
+		return err
+	}
+	return ctx.GetStub().SetEvent(sidemesh.Prefix+"RESOURCE_REGISTERED_EVENT", eventBytes)
 }
 
 func (resourceRegistry *Registry) Resolve(ctx contractapi.TransactionContextInterface, network string, chain string) (string, error) {

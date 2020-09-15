@@ -21,18 +21,28 @@ func (nrele *NeedReleaseExpiredLockError) Error() string {
 	return "NeedReleaseExpiredLockError"
 }
 
+type StateLockedByNonLocalLockError struct {
+}
+
+func (slbnlle *StateLockedByNonLocalLockError) Error() string {
+	return "StateLockedByNonLocalLockError"
+}
+
 type ManagerImpl struct {
 	Stub           shim.ChaincodeStubInterface
 	ClientIdentity cid.ClientIdentity
 }
 
-func (lockManager *ManagerImpl) GetStateWithLock(key string) ([]byte, error) {
+func (lockManager *ManagerImpl) GetStateMaybeLocked(key string) ([]byte, error) {
 	for {
 		existValue, err := lockManager.Stub.GetState(key)
+		if existValue == nil {
+			return existValue, err
+		}
 		maybeLock := &pb.Lock{}
-		err = proto.Unmarshal(existValue, maybeLock)
-		if err != nil {
-			return lockManager.Stub.GetState(key)
+		unmarErr := proto.Unmarshal(existValue, maybeLock)
+		if unmarErr != nil {
+			return existValue, err
 		}
 
 		timeout, err := checkTimeoutLock(maybeLock, lockManager.Stub)
@@ -50,7 +60,34 @@ func (lockManager *ManagerImpl) GetStateWithLock(key string) ([]byte, error) {
 	}
 }
 
-func (lockManager *ManagerImpl) PutStateWithPrimaryLock(key string, value []byte) error {
+func (lockManager *ManagerImpl) PutStateMaybeLocked(key string, value []byte) error {
+	for {
+		existValue, err := lockManager.Stub.GetState(key)
+		if existValue == nil {
+			return lockManager.Stub.PutState(key, value)
+		}
+		maybeLock := &pb.Lock{}
+		unmarErr := proto.Unmarshal(existValue, maybeLock)
+		if unmarErr != nil {
+			return lockManager.Stub.PutState(key, value)
+		}
+
+		timeout, err := checkTimeoutLock(maybeLock, lockManager.Stub)
+		if err != nil {
+			return err
+		}
+
+		if timeout {
+			//TODO:IF need more info to notify caller to release the lock
+			return &NeedReleaseExpiredLockError{}
+		} else {
+			time.Sleep(2 * time.Second)
+			continue
+		}
+	}
+}
+
+func (lockManager *ManagerImpl) PutLockedStateWithPrimaryLock(key string, value []byte) error {
 	network, err := lockManager.Stub.GetState(sidemesh.Prefix + "NetworkID")
 	if err != nil {
 		return err
@@ -58,9 +95,17 @@ func (lockManager *ManagerImpl) PutStateWithPrimaryLock(key string, value []byte
 	primaryPrepareTxId := &pb.TransactionID{Uri: &pb.URI{Network: string(network), Chain: lockManager.Stub.GetChannelID()}, Id: lockManager.Stub.GetTxID()}
 	for {
 		existValue, err := lockManager.Stub.GetState(key)
+		if existValue == nil {
+			newLock := &pb.Lock{PrevState: existValue, UpdatingState: value, PrimaryPrepareTxId: primaryPrepareTxId}
+			newLockBytes, err := proto.Marshal(newLock)
+			if err != nil {
+				return err
+			}
+			return lockManager.Stub.PutState(key, newLockBytes)
+		}
 		maybeLock := &pb.Lock{}
-		err = proto.Unmarshal(existValue, maybeLock)
-		if err != nil {
+		unmarErr := proto.Unmarshal(existValue, maybeLock)
+		if unmarErr != nil {
 			newLock := &pb.Lock{PrevState: existValue, UpdatingState: value, PrimaryPrepareTxId: primaryPrepareTxId}
 			newLockBytes, err := proto.Marshal(newLock)
 			if err != nil {
@@ -75,12 +120,8 @@ func (lockManager *ManagerImpl) PutStateWithPrimaryLock(key string, value []byte
 		}
 
 		if timeout {
-			newLock := &pb.Lock{PrevState: existValue, UpdatingState: value, PrimaryPrepareTxId: primaryPrepareTxId}
-			newLockBytes, err := proto.Marshal(newLock)
-			if err != nil {
-				return err
-			}
-			return lockManager.Stub.PutState(key, newLockBytes)
+			//TODO:IF need more info to notify caller to release the lock
+			return &NeedReleaseExpiredLockError{}
 		} else {
 			time.Sleep(2 * time.Second)
 			continue
@@ -89,13 +130,21 @@ func (lockManager *ManagerImpl) PutStateWithPrimaryLock(key string, value []byte
 
 }
 
-func (lockManager *ManagerImpl) PutStateWithBranchLock(key string, value []byte, primaryNetwork string, primaryChain string, primaryTxID string) error {
+func (lockManager *ManagerImpl) PutLockedStateWithBranchLock(key string, value []byte, primaryNetwork string, primaryChain string, primaryTxID string) error {
 	primaryPrepareTxId := &pb.TransactionID{Uri: &pb.URI{Network: primaryNetwork, Chain: primaryChain}, Id: primaryTxID}
 	for {
 		existValue, err := lockManager.Stub.GetState(key)
+		if existValue == nil && err == nil {
+			newLock := &pb.Lock{PrevState: existValue, UpdatingState: value, PrimaryPrepareTxId: primaryPrepareTxId}
+			newLockBytes, err := proto.Marshal(newLock)
+			if err != nil {
+				return err
+			}
+			return lockManager.Stub.PutState(key, newLockBytes)
+		}
 		maybeLock := &pb.Lock{}
-		err = proto.Unmarshal(existValue, maybeLock)
-		if err != nil {
+		unmarErr := proto.Unmarshal(existValue, maybeLock)
+		if unmarErr != nil {
 			newLock := &pb.Lock{PrevState: existValue, UpdatingState: value, PrimaryPrepareTxId: primaryPrepareTxId}
 			newLockBytes, err := proto.Marshal(newLock)
 			if err != nil {
@@ -110,12 +159,8 @@ func (lockManager *ManagerImpl) PutStateWithBranchLock(key string, value []byte,
 		}
 
 		if timeout {
-			newLock := &pb.Lock{PrevState: existValue, UpdatingState: value, PrimaryPrepareTxId: primaryPrepareTxId}
-			newLockBytes, err := proto.Marshal(newLock)
-			if err != nil {
-				return err
-			}
-			return lockManager.Stub.PutState(key, newLockBytes)
+			//TODO:IF need more info to notify caller to release the lock
+			return &NeedReleaseExpiredLockError{}
 		} else {
 			time.Sleep(2 * time.Second)
 			continue
@@ -134,13 +179,13 @@ func checkTimeoutLock(lock *pb.Lock, stub shim.ChaincodeStubInterface) (bool, er
 	if string(network) != xid.Uri.Network {
 		fmt.Println("this is a secondary lock")
 		// TODO: current we cannot judge secondary lock, it need external mesher listening the primary prepare tx status.
-		return false, nil
+		return false, &StateLockedByNonLocalLockError{}
 	}
 
 	if stub.GetChannelID() != xid.Uri.Chain {
 		fmt.Println("wrong channel")
 		// TODO: current we cannot judge secondary lock, it need external mesher listening the primary prepare tx status.
-		return false, nil
+		return false, &StateLockedByNonLocalLockError{}
 	}
 
 	xidKey := sidemesh.Prefix + xid.Uri.Network + xid.Uri.Chain + xid.Id

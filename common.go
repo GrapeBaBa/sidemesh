@@ -21,4 +21,5 @@ type LockManager interface {
 	PutLockedStateWithPrimaryLock(key string, value []byte) error
 	PutLockedStateWithBranchLock(key string, value []byte, primaryNetwork string, primaryChain string, primaryTxID string) error
 	GetStateMaybeLocked(key string) ([]byte, error)
+	PutStateMaybeLocked(key string, value []byte) error
 }

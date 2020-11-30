@@ -141,8 +141,9 @@ func (gtxm *GlobalTransactionManagerImpl) PreparePrimaryTransaction() error {
 	n := runtime.Callers(2, pc)
 	frames := runtime.CallersFrames(pc[:n])
 	frame, _ := frames.Next()
+	funcName := frame.Function[strings.LastIndex(frame.Function, ".")+1:]
 
-	primaryConfirmTx := &pb.BranchTransaction{TxId: &pb.TransactionID{Uri: &pb.URI{Network: string(network), Chain: gtxm.stub.GetChannelID()}}, Invocation: &pb.Invocation{Func: "Confirm" + frame.Function, Args: []string{gtxm.stub.GetTxID()}}}
+	primaryConfirmTx := &pb.BranchTransaction{TxId: &pb.TransactionID{Uri: &pb.URI{Network: string(network), Chain: gtxm.stub.GetChannelID()}}, Invocation: &pb.Invocation{Func: "Confirm" + funcName, Args: []string{gtxm.stub.GetTxID()}}}
 	globalTx.PrimaryConfirmTx = primaryConfirmTx
 
 	globalTxStatus := &pb.GlobalTransactionStatus{PrimaryPrepareTxId: globalTx.PrimaryPrepareTxId, Status: pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_PREPARED}
@@ -218,8 +219,9 @@ func (gtxm *GlobalTransactionManagerImpl) PrepareBranchTransaction(primaryNetwor
 	n := runtime.Callers(2, pc)
 	frames := runtime.CallersFrames(pc[:n])
 	frame, _ := frames.Next()
+	funcName := frame.Function[strings.LastIndex(frame.Function, ".")+1:]
 
-	branchConfirmTx := &pb.BranchTransaction{TxId: &pb.TransactionID{Uri: &pb.URI{Network: string(network), Chain: gtxm.stub.GetChannelID()}}, Invocation: &pb.Invocation{Func: "Confirm" + frame.Function, Args: []string{gtxm.stub.GetTxID()}}}
+	branchConfirmTx := &pb.BranchTransaction{TxId: &pb.TransactionID{Uri: &pb.URI{Network: string(network), Chain: gtxm.stub.GetChannelID()}}, Invocation: &pb.Invocation{Func: "Confirm" + funcName, Args: []string{gtxm.stub.GetTxID()}}}
 	branchTxPreparedEvent := &pb.BranchTransactionPreparedEvent{PrimaryPrepareTxId: globalTxID, GlobalTxStatusQuery: globalTxQuery, ConfirmTx: branchConfirmTx}
 	branchTxPreparedEventBytes, err := proto.Marshal(branchTxPreparedEvent)
 	if err != nil {

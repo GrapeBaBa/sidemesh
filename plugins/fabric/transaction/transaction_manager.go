@@ -279,22 +279,31 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 		globalTx.BranchPrepareTxs[i].Proof = depTxRes[3]
 		wg.Add(1)
 		go func(depTxRes []string) {
+			fmt.Println(depTxRes[0])
+			fmt.Println(depTxRes[1])
+			fmt.Println(depTxRes[2])
+			fmt.Println(depTxRes[3])
 			args := [][]byte{[]byte("Resolve"), []byte(depTxRes[0]), []byte(depTxRes[1])}
 			res := gtxm.stub.InvokeChaincode("verifyregistry", args, gtxm.stub.GetChannelID())
+			fmt.Println("1")
 			if res.Status != shim.OK {
 				errChan <- errors.New(res.Message)
+				fmt.Println("2")
 				wg.Done()
 				return
 			}
 
+			fmt.Println("3")
 			verifyInfo := &sidemesh.VerifyInfo{}
 			err := json.Unmarshal(res.Payload, verifyInfo)
 			if err != nil {
 				errChan <- err
+				fmt.Println("4")
 				wg.Done()
 				return
 			}
 
+			fmt.Println("5")
 			if depTxRes[3] != "" {
 				args := [][]byte{[]byte(verifyInfo.Function), []byte(depTxRes[2]), []byte(depTxRes[3])}
 				res := gtxm.stub.InvokeChaincode(verifyInfo.Contract, args, gtxm.stub.GetChannelID())
@@ -314,6 +323,7 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 					atomic.AddUint32(&numVerified, 1)
 				}
 			}
+			fmt.Println("6")
 			wg.Done()
 		}(depTxRes)
 	}

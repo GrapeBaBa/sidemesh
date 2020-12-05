@@ -274,10 +274,12 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 	var wg sync.WaitGroup
 	var numVerified uint32 = 0
 	errChan := make(chan error)
+	wgDone := make(chan bool)
+
+	wg.Add(len(branchTxRes))
 	for i, depTxRes := range branchTxRes {
 		globalTx.BranchPrepareTxs[i].TxId.Id = depTxRes[2]
 		globalTx.BranchPrepareTxs[i].Proof = depTxRes[3]
-		wg.Add(1)
 		go func(depTxRes []string) {
 			fmt.Println(depTxRes[0])
 			fmt.Println(depTxRes[1])
@@ -299,8 +301,9 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 			err := json.Unmarshal(res.Payload, verifyInfo)
 			if err != nil {
 				fmt.Println("44")
+				fmt.Printf("eeeee %v", err)
 				errChan <- err
-				fmt.Println("4")
+				fmt.Println("4ssss")
 				wg.Done()
 				return
 			}
@@ -329,15 +332,18 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 			wg.Done()
 		}(depTxRes)
 	}
-	wg.Wait()
-	close(errChan)
 
-	var errMsgs []string
-	for err := range errChan {
-		errMsgs = append(errMsgs, err.Error())
-	}
-	if len(errMsgs) != 0 {
-		return fmt.Errorf(strings.Join(errMsgs, "\n"))
+	go func() {
+		wg.Wait()
+		close(wgDone)
+	}()
+
+	select {
+	case <-wgDone:
+		break
+	case err := <-errChan:
+		close(errChan)
+		return err
 	}
 
 	waitingConfirmTxResponse := gtxm.stub.InvokeChaincode("qscc", [][]byte{[]byte("GetTransactionByID"), []byte(gtxm.stub.GetChannelID()), []byte(primaryPrepareTxID)}, gtxm.stub.GetChannelID())

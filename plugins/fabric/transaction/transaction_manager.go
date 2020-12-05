@@ -184,7 +184,7 @@ func (gtxm *GlobalTransactionManagerImpl) StartBranchTransaction(primaryNetwork 
 	if res.Status != shim.OK {
 		return errors.New(res.Message)
 	}
-    fmt.Println(res)
+	fmt.Println(res)
 	fmt.Println(res.Payload)
 	verifyInfo := &sidemesh.VerifyInfo{}
 	err := json.Unmarshal(res.Payload, verifyInfo)
@@ -295,8 +295,10 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 
 			fmt.Println("3")
 			verifyInfo := &sidemesh.VerifyInfo{}
+			fmt.Printf("playload %v", res.Payload)
 			err := json.Unmarshal(res.Payload, verifyInfo)
 			if err != nil {
+				fmt.Println("44")
 				errChan <- err
 				fmt.Println("4")
 				wg.Done()

@@ -343,31 +343,37 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 		return fmt.Errorf(strings.Join(errMsgs, "\n"))
 	}
 
+	fmt.Println("7")
 	waitingConfirmTxResponse := gtxm.stub.InvokeChaincode("qscc", [][]byte{[]byte("GetTransactionByID"), []byte(gtxm.stub.GetChannelID()), []byte(primaryPrepareTxID)}, gtxm.stub.GetChannelID())
 	if waitingConfirmTxResponse.Status != shim.OK {
 		return errors.New(waitingConfirmTxResponse.Message)
 	}
 
+	fmt.Println("8")
 	tx := &peer.ProcessedTransaction{}
 	err = proto.Unmarshal(waitingConfirmTxResponse.Payload, tx)
 	if err != nil {
 		return err
 	}
 
+	fmt.Println("9")
 	if tx.ValidationCode != 0 {
 		return errors.New("invalid tx validation code")
 	}
 
+	fmt.Println("10")
 	chaincodeAction, err := protoutil.GetActionFromEnvelopeMsg(tx.TransactionEnvelope)
 	if err != nil {
 		return err
 	}
 
+	fmt.Println("11")
 	txRWSet := &rwsetutil.TxRwSet{}
 	if err = txRWSet.FromProtoBytes(chaincodeAction.Results); err != nil {
 		return err
 	}
 
+	fmt.Println("12")
 	for _, ns := range txRWSet.NsRwSets {
 		if ns.KvRwSet != nil && len(ns.KvRwSet.Writes) > 0 {
 			for _, write := range ns.KvRwSet.Writes {
@@ -445,10 +451,13 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 		//}
 	}
 
+	fmt.Println("13")
 	for _, branchPrepareTx := range globalTx.BranchPrepareTxs {
 		branchConfirmTx := &pb.BranchTransaction{TxId: &pb.TransactionID{Uri: &pb.URI{Network: branchPrepareTx.TxId.Uri.Network, Chain: branchPrepareTx.TxId.Uri.Chain}}, Invocation: &pb.Invocation{Contract: branchPrepareTx.Invocation.Contract, Func: "Confirm" + branchPrepareTx.Invocation.Func, Args: []string{branchPrepareTx.TxId.Id, strconv.Itoa(int(globalTxStatus.Status)), string(network), gtxm.stub.GetChannelID(), gtxm.stub.GetTxID()}}}
 		globalTx.BranchConfirmTxs = append(globalTx.BranchConfirmTxs, branchConfirmTx)
 	}
+
+	fmt.Println("14")
 	globalTxStatusBytes, err := proto.Marshal(globalTxStatus)
 	if err != nil {
 		return err

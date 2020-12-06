@@ -307,6 +307,8 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 			}
 
 			fmt.Println("5")
+			fmt.Println(verifyInfo.Function)
+			fmt.Println(verifyInfo.Contract)
 			if depTxRes[3] != "" {
 				args := [][]byte{[]byte(verifyInfo.Function), []byte(depTxRes[2]), []byte(depTxRes[3])}
 				res := gtxm.stub.InvokeChaincode(verifyInfo.Contract, args, gtxm.stub.GetChannelID())

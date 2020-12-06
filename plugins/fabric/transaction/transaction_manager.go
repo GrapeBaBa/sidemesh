@@ -273,13 +273,11 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 
 	var wg sync.WaitGroup
 	var numVerified uint32 = 0
-	errChan := make(chan error)
-	wgDone := make(chan bool)
-
-	wg.Add(len(branchTxRes))
+	errChan := make(chan error, len(branchTxRes))
 	for i, depTxRes := range branchTxRes {
 		globalTx.BranchPrepareTxs[i].TxId.Id = depTxRes[2]
 		globalTx.BranchPrepareTxs[i].Proof = depTxRes[3]
+		wg.Add(1)
 		go func(depTxRes []string) {
 			fmt.Println(depTxRes[0])
 			fmt.Println(depTxRes[1])
@@ -289,6 +287,7 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 			res := gtxm.stub.InvokeChaincode("verifyregistry", args, gtxm.stub.GetChannelID())
 			fmt.Println("1")
 			if res.Status != shim.OK {
+				fmt.Println(res.Message)
 				errChan <- errors.New(res.Message)
 				fmt.Println("2")
 				wg.Done()
@@ -297,13 +296,12 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 
 			fmt.Println("3")
 			verifyInfo := &sidemesh.VerifyInfo{}
-			fmt.Printf("playload %v", res.Payload)
+			fmt.Println(res.Payload)
 			err := json.Unmarshal(res.Payload, verifyInfo)
 			if err != nil {
-				fmt.Println("44")
-				fmt.Printf("eeeee %v", err)
+				fmt.Println(err)
 				errChan <- err
-				fmt.Println("4ssss")
+				fmt.Println("4")
 				wg.Done()
 				return
 			}
@@ -313,6 +311,7 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 				args := [][]byte{[]byte(verifyInfo.Function), []byte(depTxRes[2]), []byte(depTxRes[3])}
 				res := gtxm.stub.InvokeChaincode(verifyInfo.Contract, args, gtxm.stub.GetChannelID())
 				if res.Status != shim.OK {
+					fmt.Println(res.Message)
 					errChan <- errors.New(res.Message)
 					wg.Done()
 					return
@@ -320,6 +319,7 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 
 				ok, err := strconv.ParseBool(string(res.Payload))
 				if err != nil {
+					fmt.Println(err)
 					errChan <- err
 					wg.Done()
 					return
@@ -332,18 +332,15 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 			wg.Done()
 		}(depTxRes)
 	}
+	wg.Wait()
+	close(errChan)
 
-	go func() {
-		wg.Wait()
-		close(wgDone)
-	}()
-
-	select {
-	case <-wgDone:
-		break
-	case err := <-errChan:
-		close(errChan)
-		return err
+	var errMsgs []string
+	for err := range errChan {
+		errMsgs = append(errMsgs, err.Error())
+	}
+	if len(errMsgs) != 0 {
+		return fmt.Errorf(strings.Join(errMsgs, "\n"))
 	}
 
 	waitingConfirmTxResponse := gtxm.stub.InvokeChaincode("qscc", [][]byte{[]byte("GetTransactionByID"), []byte(gtxm.stub.GetChannelID()), []byte(primaryPrepareTxID)}, gtxm.stub.GetChannelID())

@@ -332,13 +332,16 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 			wg.Done()
 		}(depTxRes)
 	}
+	fmt.Println("10")
 	wg.Wait()
 	close(errChan)
 
+	fmt.Println("11")
 	var errMsgs []string
 	for err := range errChan {
 		errMsgs = append(errMsgs, err.Error())
 	}
+	fmt.Println("12")
 	if len(errMsgs) != 0 {
 		return fmt.Errorf(strings.Join(errMsgs, "\n"))
 	}

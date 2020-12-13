@@ -1,6 +1,8 @@
 package transaction
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,9 +14,6 @@ import (
 
 	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/hyperledger/fabric-protos-go/peer"
-	"github.com/hyperledger/fabric/core/ledger/kvledger/txmgmt/rwsetutil"
-	"github.com/hyperledger/fabric/protoutil"
 	"github.com/zhigui-projects/sidemesh"
 	"github.com/zhigui-projects/sidemesh/plugins/fabric/lock"
 
@@ -63,6 +62,7 @@ func (gtxc *GlobalTransactionContext) GetLockManager() sidemesh.LockManager {
 type GlobalTransactionManagerImpl struct {
 	stub               shim.ChaincodeStubInterface
 	clientIdentity     cid.ClientIdentity
+	lockMgr            lock.ManagerImpl
 	globalTransactions map[string]*pb.GlobalTransaction
 }
 
@@ -161,6 +161,18 @@ func (gtxm *GlobalTransactionManagerImpl) PreparePrimaryTransaction() error {
 		return err
 	}
 
+	if writeKeySet, ok := gtxm.lockMgr.WriteKeySet[xidKey]; ok {
+		var buf bytes.Buffer
+		err = gob.NewEncoder(&buf).Encode(&writeKeySet)
+		if err != nil {
+			return err
+		}
+		err = gtxm.stub.PutState(xidKey+":wset", buf.Bytes())
+		if err != nil {
+			return err
+		}
+	}
+
 	queryGlobalTxInvocation := &pb.Invocation{Func: "QueryGlobalTxStatus"}
 	primaryTxPreparedEvent := &pb.PrimaryTransactionPreparedEvent{PrimaryPrepareTxId: globalTx.PrimaryPrepareTxId, PrimaryConfirmTx: globalTx.PrimaryConfirmTx, BranchPrepareTxs: globalTx.BranchPrepareTxs, GlobalTxStatusQuery: queryGlobalTxInvocation}
 	primaryTxPreparedEventBytes, err := proto.Marshal(primaryTxPreparedEvent)
@@ -220,6 +232,19 @@ func (gtxm *GlobalTransactionManagerImpl) PrepareBranchTransaction(primaryNetwor
 	frames := runtime.CallersFrames(pc[:n])
 	frame, _ := frames.Next()
 	funcName := frame.Function[strings.LastIndex(frame.Function, ".")+1:]
+
+	bidKey := sidemesh.Prefix + string(network) + gtxm.stub.GetChannelID() + gtxm.stub.GetTxID()
+	if writeKeySet, ok := gtxm.lockMgr.WriteKeySet[bidKey]; ok {
+		var buf bytes.Buffer
+		err = gob.NewEncoder(&buf).Encode(&writeKeySet)
+		if err != nil {
+			return err
+		}
+		err = gtxm.stub.PutState(bidKey+":wset", buf.Bytes())
+		if err != nil {
+			return err
+		}
+	}
 
 	branchConfirmTx := &pb.BranchTransaction{TxId: &pb.TransactionID{Uri: &pb.URI{Network: string(network), Chain: gtxm.stub.GetChannelID()}}, Invocation: &pb.Invocation{Func: "Confirm" + funcName, Args: []string{gtxm.stub.GetTxID()}}}
 	branchTxPreparedEvent := &pb.BranchTransactionPreparedEvent{PrimaryPrepareTxId: globalTxID, GlobalTxStatusQuery: globalTxQuery, ConfirmTx: branchConfirmTx}
@@ -317,113 +342,153 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 		fmt.Println("6")
 	}
 
+	if int(numVerified) == len(globalTx.BranchPrepareTxs) {
+		globalTxStatus.Status = pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED
+	} else {
+		globalTxStatus.Status = pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_CANCELED
+	}
+
 	fmt.Println("7")
-	waitingConfirmTxResponse := gtxm.stub.InvokeChaincode("qscc", [][]byte{[]byte("GetTransactionByID"), []byte(gtxm.stub.GetChannelID()), []byte(primaryPrepareTxID)}, gtxm.stub.GetChannelID())
-	if waitingConfirmTxResponse.Status != shim.OK {
-		return errors.New(waitingConfirmTxResponse.Message)
-	}
-
-	fmt.Println("8")
-	tx := &peer.ProcessedTransaction{}
-	err = proto.Unmarshal(waitingConfirmTxResponse.Payload, tx)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("9")
-	if tx.ValidationCode != 0 {
-		return errors.New("invalid tx validation code")
-	}
-
-	fmt.Println("10")
-	chaincodeAction, err := protoutil.GetActionFromEnvelopeMsg(tx.TransactionEnvelope)
-	if err != nil {
-		return err
-	}
-
-	fmt.Println("11")
-	txRWSet := &rwsetutil.TxRwSet{}
-	if err = txRWSet.FromProtoBytes(chaincodeAction.Results); err != nil {
-		return err
-	}
+	//waitingConfirmTxResponse := gtxm.stub.InvokeChaincode("qscc", [][]byte{[]byte("GetTransactionByID"), []byte(gtxm.stub.GetChannelID()), []byte(primaryPrepareTxID)}, gtxm.stub.GetChannelID())
+	//if waitingConfirmTxResponse.Status != shim.OK {
+	//	return errors.New(waitingConfirmTxResponse.Message)
+	//}
+	//
+	//fmt.Println("8")
+	//tx := &peer.ProcessedTransaction{}
+	//err = proto.Unmarshal(waitingConfirmTxResponse.Payload, tx)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//fmt.Println("9")
+	//if tx.ValidationCode != 0 {
+	//	return errors.New("invalid tx validation code")
+	//}
+	//
+	//fmt.Println("10")
+	//chaincodeAction, err := protoutil.GetActionFromEnvelopeMsg(tx.TransactionEnvelope)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//fmt.Println("11")
+	//txRWSet := &rwsetutil.TxRwSet{}
+	//if err = txRWSet.FromProtoBytes(chaincodeAction.Results); err != nil {
+	//	return err
+	//}
 
 	fmt.Println("12")
-	for _, ns := range txRWSet.NsRwSets {
-		if ns.KvRwSet != nil && len(ns.KvRwSet.Writes) > 0 {
-			for _, write := range ns.KvRwSet.Writes {
-				l := &pb.Lock{}
-				err = proto.Unmarshal(write.Value, l)
-				if err != nil {
-					continue
-				}
-				// TODO: check lock if expired
-				if int(numVerified) == len(globalTx.BranchPrepareTxs) {
-					globalTxStatus.Status = pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED
-					err = gtxm.stub.PutState(write.Key, l.UpdatingState)
-					if err != nil {
-						return err
-					}
-				} else {
-					globalTxStatus.Status = pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_CANCELED
-					err = gtxm.stub.PutState(write.Key, l.PrevState)
-					if err != nil {
-						return err
-					}
-				}
+	wsetBytes, err := gtxm.stub.GetState(xidKey + ":wset")
+	if err != nil {
+		return err
+	}
 
+	if wsetBytes != nil {
+		fmt.Println("13")
+		var wset []string
+		err := gob.NewDecoder(bytes.NewBuffer(wsetBytes)).Decode(&wset)
+		if err != nil {
+			return err
+		}
+		fmt.Println("14")
+		for _, wKey := range wset {
+			l := &pb.Lock{}
+			v, err := gtxm.stub.GetState(wKey)
+			err = proto.Unmarshal(v, l)
+			if err != nil {
+				return fmt.Errorf("wkey %s lock not exist", wKey)
+			}
+			// TODO: check lock if expired
+			if globalTxStatus.Status == pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED {
+				err = gtxm.stub.PutState(wKey, l.UpdatingState)
+				if err != nil {
+					return err
+				}
+			} else if globalTxStatus.Status == pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_CANCELED {
+				err = gtxm.stub.PutState(wKey, l.PrevState)
+				if err != nil {
+					return err
+				}
 			}
 		}
-
-		// cannot implement private data and metadata lock
-		//for _, c := range ns.CollHashedRwSets {
-		//	if c.HashedRwSet != nil && len(c.HashedRwSet.HashedWrites) > 0 {
-		//		for _, write := range c.HashedRwSet.HashedWrites {
-		//			lock := &pb.Lock{}
-		//			err = proto.Unmarshal(write.ValueHash, lock)
-		//			if err != nil {
-		//				return false, err
-		//			}
-		//			if crossChainTxStatus.Status == pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED {
-		//				err = Stub.PutPrivateData(write, lock.UpdatingState)
-		//				if err != nil {
-		//					return false, err
-		//				}
-		//			} else {
-		//				err = Stub.PutState(write.Key, lock.PrevState)
-		//				if err != nil {
-		//					return false, err
-		//				}
-		//			}
-		//		}
-		//	}
-		//
-		//	// private metadata updates
-		//	if c.HashedRwSet != nil && len(c.HashedRwSet.MetadataWrites) > 0 {
-		//		return true
-		//	}
-		//}
-
-		//if ns.KvRwSet != nil && len(ns.KvRwSet.MetadataWrites) > 0 {
-		//	for _, write := range ns.KvRwSet.MetadataWrites {
-		//		lock := &pb.Lock{}
-		//		err = proto.Unmarshal(write.Entries, lock)
-		//		if err != nil {
-		//			return false, err
-		//		}
-		//		if crossChainTxStatus.Status == pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED {
-		//			err = Stub.PutState(write.Key, lock.UpdatingState)
-		//			if err != nil {
-		//				return false, err
-		//			}
-		//		} else {
-		//			err = Stub.PutState(write.Key, lock.PrevState)
-		//			if err != nil {
-		//				return false, err
-		//			}
-		//		}
-		//	}
-		//}
 	}
+	//for _, ns := range txRWSet.NsRwSets {
+	//	if ns.KvRwSet != nil && len(ns.KvRwSet.Writes) > 0 {
+	//		for _, write := range ns.KvRwSet.Writes {
+	//			l := &pb.Lock{}
+	//			err = proto.Unmarshal(write.Value, l)
+	//			if err != nil {
+	//				continue
+	//			}
+	//			// TODO: check lock if expired
+	//			if int(numVerified) == len(globalTx.BranchPrepareTxs) {
+	//				globalTxStatus.Status = pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED
+	//				err = gtxm.stub.PutState(write.Key, l.UpdatingState)
+	//				if err != nil {
+	//					return err
+	//				}
+	//			} else {
+	//				globalTxStatus.Status = pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_CANCELED
+	//				err = gtxm.stub.PutState(write.Key, l.PrevState)
+	//				if err != nil {
+	//					return err
+	//				}
+	//			}
+	//
+	//		}
+	//	}
+
+	// cannot implement private data and metadata lock
+	//for _, c := range ns.CollHashedRwSets {
+	//	if c.HashedRwSet != nil && len(c.HashedRwSet.HashedWrites) > 0 {
+	//		for _, write := range c.HashedRwSet.HashedWrites {
+	//			lock := &pb.Lock{}
+	//			err = proto.Unmarshal(write.ValueHash, lock)
+	//			if err != nil {
+	//				return false, err
+	//			}
+	//			if crossChainTxStatus.Status == pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED {
+	//				err = Stub.PutPrivateData(write, lock.UpdatingState)
+	//				if err != nil {
+	//					return false, err
+	//				}
+	//			} else {
+	//				err = Stub.PutState(write.Key, lock.PrevState)
+	//				if err != nil {
+	//					return false, err
+	//				}
+	//			}
+	//		}
+	//	}
+	//
+	//	// private metadata updates
+	//	if c.HashedRwSet != nil && len(c.HashedRwSet.MetadataWrites) > 0 {
+	//		return true
+	//	}
+	//}
+
+	//if ns.KvRwSet != nil && len(ns.KvRwSet.MetadataWrites) > 0 {
+	//	for _, write := range ns.KvRwSet.MetadataWrites {
+	//		lock := &pb.Lock{}
+	//		err = proto.Unmarshal(write.Entries, lock)
+	//		if err != nil {
+	//			return false, err
+	//		}
+	//		if crossChainTxStatus.Status == pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED {
+	//			err = Stub.PutState(write.Key, lock.UpdatingState)
+	//			if err != nil {
+	//				return false, err
+	//			}
+	//		} else {
+	//			err = Stub.PutState(write.Key, lock.PrevState)
+	//			if err != nil {
+	//				return false, err
+	//			}
+	//		}
+	//	}
+	//}
+	//}
 
 	fmt.Println("13")
 	for _, branchPrepareTx := range globalTx.BranchPrepareTxs {
@@ -495,53 +560,93 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmBranchTransaction(branchPrepare
 		return errors.New("primary confirm tx verify failed")
 	}
 
-	waitingConfirmTxResponse := gtxm.stub.InvokeChaincode("qscc", [][]byte{[]byte("GetTransactionByID"), []byte(gtxm.stub.GetChannelID()), []byte(branchPrepareTxID)}, gtxm.stub.GetChannelID())
-	if waitingConfirmTxResponse.Status != shim.OK {
-		return errors.New(waitingConfirmTxResponse.Message)
-	}
+	//waitingConfirmTxResponse := gtxm.stub.InvokeChaincode("qscc", [][]byte{[]byte("GetTransactionByID"), []byte(gtxm.stub.GetChannelID()), []byte(branchPrepareTxID)}, gtxm.stub.GetChannelID())
+	//if waitingConfirmTxResponse.Status != shim.OK {
+	//	return errors.New(waitingConfirmTxResponse.Message)
+	//}
+	//
+	//tx := &peer.ProcessedTransaction{}
+	//err = proto.Unmarshal(waitingConfirmTxResponse.Payload, tx)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//if tx.ValidationCode != 0 {
+	//	return errors.New("invalid tx validation code")
+	//}
+	//
+	//chaincodeAction, err := protoutil.GetActionFromEnvelopeMsg(tx.TransactionEnvelope)
+	//if err != nil {
+	//	return err
+	//}
+	//
+	//txRWSet := &rwsetutil.TxRwSet{}
+	//if err = txRWSet.FromProtoBytes(chaincodeAction.Results); err != nil {
+	//	return err
+	//}
 
-	tx := &peer.ProcessedTransaction{}
-	err = proto.Unmarshal(waitingConfirmTxResponse.Payload, tx)
+	network, err := gtxm.stub.GetState(sidemesh.Prefix + "NetworkID")
+	if err != nil {
+		return err
+	}
+	bidKey := sidemesh.Prefix + string(network) + gtxm.stub.GetChannelID() + branchPrepareTxID
+	wsetBytes, err := gtxm.stub.GetState(bidKey + ":wset")
 	if err != nil {
 		return err
 	}
 
-	if tx.ValidationCode != 0 {
-		return errors.New("invalid tx validation code")
-	}
-
-	chaincodeAction, err := protoutil.GetActionFromEnvelopeMsg(tx.TransactionEnvelope)
-	if err != nil {
-		return err
-	}
-
-	txRWSet := &rwsetutil.TxRwSet{}
-	if err = txRWSet.FromProtoBytes(chaincodeAction.Results); err != nil {
-		return err
-	}
-
-	for _, ns := range txRWSet.NsRwSets {
-		if ns.KvRwSet != nil && len(ns.KvRwSet.Writes) > 0 {
-			for _, write := range ns.KvRwSet.Writes {
-				l := &pb.Lock{}
-				err = proto.Unmarshal(write.Value, l)
+	if wsetBytes != nil {
+		fmt.Println("13")
+		var wset []string
+		err := gob.NewDecoder(bytes.NewBuffer(wsetBytes)).Decode(&wset)
+		if err != nil {
+			return err
+		}
+		fmt.Println("14")
+		for _, wKey := range wset {
+			l := &pb.Lock{}
+			v, err := gtxm.stub.GetState(wKey)
+			err = proto.Unmarshal(v, l)
+			if err != nil {
+				return fmt.Errorf("wkey %s lock not exist", wKey)
+			}
+			// TODO: check lock if expired
+			if globalTxStatus == int(pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED) {
+				err = gtxm.stub.PutState(wKey, l.UpdatingState)
 				if err != nil {
-					continue
+					return err
 				}
-				if globalTxStatus == int(pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED) {
-					err = gtxm.stub.PutState(write.Key, l.UpdatingState)
-					if err != nil {
-						return err
-					}
-				} else {
-					err = gtxm.stub.PutState(write.Key, l.PrevState)
-					if err != nil {
-						return err
-					}
+			} else if globalTxStatus == int(pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_CANCELED) {
+				err = gtxm.stub.PutState(wKey, l.PrevState)
+				if err != nil {
+					return err
 				}
-
 			}
 		}
+	}
+
+	//for _, ns := range txRWSet.NsRwSets {
+	//	if ns.KvRwSet != nil && len(ns.KvRwSet.Writes) > 0 {
+	//		for _, write := range ns.KvRwSet.Writes {
+	//			l := &pb.Lock{}
+	//			err = proto.Unmarshal(write.Value, l)
+	//			if err != nil {
+	//				continue
+	//			}
+	//			if globalTxStatus == int(pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED) {
+	//				err = gtxm.stub.PutState(write.Key, l.UpdatingState)
+	//				if err != nil {
+	//					return err
+	//				}
+	//			} else {
+	//				err = gtxm.stub.PutState(write.Key, l.PrevState)
+	//				if err != nil {
+	//					return err
+	//				}
+	//			}
+	//
+	//		}
+	//	}
 
 		// cannot implement private data and metadata lock
 		//for _, c := range ns.CollHashedRwSets {
@@ -592,7 +697,7 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmBranchTransaction(branchPrepare
 		//		}
 		//	}
 		//}
-	}
+	//}
 
 	return nil
 }

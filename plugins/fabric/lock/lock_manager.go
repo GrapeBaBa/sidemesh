@@ -10,7 +10,6 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/hyperledger/fabric-chaincode-go/pkg/cid"
 	"github.com/hyperledger/fabric-chaincode-go/shim"
-	"github.com/hyperledger/fabric-protos-go/common"
 	"github.com/zhigui-projects/sidemesh/pb"
 )
 
@@ -31,6 +30,7 @@ func (slbnlle *StateLockedByNonLocalLockError) Error() string {
 type ManagerImpl struct {
 	Stub           shim.ChaincodeStubInterface
 	ClientIdentity cid.ClientIdentity
+	WriteKeySet    map[string][]string
 }
 
 func (lockManager *ManagerImpl) GetStateMaybeLocked(key string) ([]byte, error) {
@@ -101,6 +101,10 @@ func (lockManager *ManagerImpl) PutLockedStateWithPrimaryLock(key string, value 
 			if err != nil {
 				return err
 			}
+			err = lockManager.putWriteKey(key)
+			if err != nil {
+				return err
+			}
 			return lockManager.Stub.PutState(key, newLockBytes)
 		}
 		maybeLock := &pb.Lock{}
@@ -108,6 +112,10 @@ func (lockManager *ManagerImpl) PutLockedStateWithPrimaryLock(key string, value 
 		if unmarErr != nil {
 			newLock := &pb.Lock{PrevState: existValue, UpdatingState: value, PrimaryPrepareTxId: primaryPrepareTxId}
 			newLockBytes, err := proto.Marshal(newLock)
+			if err != nil {
+				return err
+			}
+			err = lockManager.putWriteKey(key)
 			if err != nil {
 				return err
 			}
@@ -140,6 +148,10 @@ func (lockManager *ManagerImpl) PutLockedStateWithBranchLock(key string, value [
 			if err != nil {
 				return err
 			}
+			err = lockManager.putWriteKey(key)
+			if err != nil {
+				return err
+			}
 			return lockManager.Stub.PutState(key, newLockBytes)
 		}
 		maybeLock := &pb.Lock{}
@@ -147,6 +159,10 @@ func (lockManager *ManagerImpl) PutLockedStateWithBranchLock(key string, value [
 		if unmarErr != nil {
 			newLock := &pb.Lock{PrevState: existValue, UpdatingState: value, PrimaryPrepareTxId: primaryPrepareTxId}
 			newLockBytes, err := proto.Marshal(newLock)
+			if err != nil {
+				return err
+			}
+			err = lockManager.putWriteKey(key)
 			if err != nil {
 				return err
 			}
@@ -223,15 +239,15 @@ func checkTimeoutLock(lock *pb.Lock, stub shim.ChaincodeStubInterface) (bool, er
 	}
 
 	// This may be not consistent in multiple peers endorse phase
-	chainInfoResponse := stub.InvokeChaincode("qscc", [][]byte{[]byte("GetChainInfo"), []byte(xid.Uri.Chain)}, xid.Uri.Chain)
-	chainInfo := &common.BlockchainInfo{}
-	err = proto.Unmarshal(chainInfoResponse.Payload, chainInfo)
-	if err != nil {
-		return false, err
-	}
-	if chainInfo.Height > crossChainTx.TtlHeight {
-		return true, nil
-	}
+	//chainInfoResponse := stub.InvokeChaincode("qscc", [][]byte{[]byte("GetChainInfo"), []byte(xid.Uri.Chain)}, xid.Uri.Chain)
+	//chainInfo := &common.BlockchainInfo{}
+	//err = proto.Unmarshal(chainInfoResponse.Payload, chainInfo)
+	//if err != nil {
+	//	return false, err
+	//}
+	//if chainInfo.Height > crossChainTx.TtlHeight {
+	//	return true, nil
+	//}
 
 	// This may be not consistent in multiple peers endorse phase
 	now := time.Now().UTC()
@@ -244,4 +260,18 @@ func checkTimeoutLock(lock *pb.Lock, stub shim.ChaincodeStubInterface) (bool, er
 	}
 
 	return false, nil
+}
+
+func (lockManager *ManagerImpl) putWriteKey(key string) error {
+	network, err := lockManager.Stub.GetState(sidemesh.Prefix + "NetworkID")
+	if err != nil {
+		return err
+	}
+	xidKey := sidemesh.Prefix + string(network) + lockManager.Stub.GetChannelID() + lockManager.Stub.GetTxID()
+	writeKeySet, ok := lockManager.WriteKeySet[xidKey]
+	if !ok {
+		writeKeySet = []string{}
+	}
+	writeKeySet = append(writeKeySet, key)
+	return nil
 }

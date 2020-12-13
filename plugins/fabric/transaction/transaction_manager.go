@@ -40,8 +40,9 @@ type GlobalTransactionContext struct {
 func (gtxc *GlobalTransactionContext) GetGlobalTransactionManager() sidemesh.GlobalTransactionManager {
 	if gtxc.globalTxMgr == nil {
 		gtxc.once.Do(func() {
-			gtxc.globalTxMgr = &GlobalTransactionManagerImpl{stub: gtxc.GetStub(), clientIdentity: gtxc.GetClientIdentity(), globalTransactions: make(map[string]*pb.GlobalTransaction)}
-			gtxc.lockMgr = &lock.ManagerImpl{Stub: gtxc.GetStub(), ClientIdentity: gtxc.GetClientIdentity()}
+			lockImpl := &lock.ManagerImpl{Stub: gtxc.GetStub(), ClientIdentity: gtxc.GetClientIdentity()}
+			gtxc.lockMgr = lockImpl
+			gtxc.globalTxMgr = &GlobalTransactionManagerImpl{stub: gtxc.GetStub(), clientIdentity: gtxc.GetClientIdentity(), globalTransactions: make(map[string]*pb.GlobalTransaction), lockMgr: lockImpl}
 		})
 	}
 
@@ -51,8 +52,9 @@ func (gtxc *GlobalTransactionContext) GetGlobalTransactionManager() sidemesh.Glo
 func (gtxc *GlobalTransactionContext) GetLockManager() sidemesh.LockManager {
 	if gtxc.lockMgr == nil {
 		gtxc.once.Do(func() {
-			gtxc.globalTxMgr = &GlobalTransactionManagerImpl{stub: gtxc.GetStub(), clientIdentity: gtxc.GetClientIdentity(), globalTransactions: make(map[string]*pb.GlobalTransaction)}
-			gtxc.lockMgr = &lock.ManagerImpl{Stub: gtxc.GetStub(), ClientIdentity: gtxc.GetClientIdentity()}
+			lockImpl := &lock.ManagerImpl{Stub: gtxc.GetStub(), ClientIdentity: gtxc.GetClientIdentity()}
+			gtxc.lockMgr = lockImpl
+			gtxc.globalTxMgr = &GlobalTransactionManagerImpl{stub: gtxc.GetStub(), clientIdentity: gtxc.GetClientIdentity(), globalTransactions: make(map[string]*pb.GlobalTransaction), lockMgr: lockImpl}
 		})
 	}
 
@@ -62,7 +64,7 @@ func (gtxc *GlobalTransactionContext) GetLockManager() sidemesh.LockManager {
 type GlobalTransactionManagerImpl struct {
 	stub               shim.ChaincodeStubInterface
 	clientIdentity     cid.ClientIdentity
-	lockMgr            lock.ManagerImpl
+	lockMgr            *lock.ManagerImpl
 	globalTransactions map[string]*pb.GlobalTransaction
 }
 
@@ -167,6 +169,8 @@ func (gtxm *GlobalTransactionManagerImpl) PreparePrimaryTransaction() error {
 		if err != nil {
 			return err
 		}
+		fmt.Println("wset")
+		fmt.Println(buf.Bytes())
 		err = gtxm.stub.PutState(xidKey+":wset", buf.Bytes())
 		if err != nil {
 			return err
@@ -240,6 +244,8 @@ func (gtxm *GlobalTransactionManagerImpl) PrepareBranchTransaction(primaryNetwor
 		if err != nil {
 			return err
 		}
+		fmt.Println("wset")
+		fmt.Println(buf.Bytes())
 		err = gtxm.stub.PutState(bidKey+":wset", buf.Bytes())
 		if err != nil {
 			return err
@@ -385,13 +391,13 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmPrimaryTransaction(primaryPrepa
 	}
 
 	if wsetBytes != nil {
-		fmt.Println("13")
+		fmt.Println("15")
 		var wset []string
 		err := gob.NewDecoder(bytes.NewBuffer(wsetBytes)).Decode(&wset)
 		if err != nil {
 			return err
 		}
-		fmt.Println("14")
+		fmt.Println("16")
 		for _, wKey := range wset {
 			l := &pb.Lock{}
 			v, err := gtxm.stub.GetState(wKey)
@@ -648,55 +654,55 @@ func (gtxm *GlobalTransactionManagerImpl) ConfirmBranchTransaction(branchPrepare
 	//		}
 	//	}
 
-		// cannot implement private data and metadata lock
-		//for _, c := range ns.CollHashedRwSets {
-		//	if c.HashedRwSet != nil && len(c.HashedRwSet.HashedWrites) > 0 {
-		//		for _, write := range c.HashedRwSet.HashedWrites {
-		//			lock := &pb.Lock{}
-		//			err = proto.Unmarshal(write.ValueHash, lock)
-		//			if err != nil {
-		//				return false, err
-		//			}
-		//			if crossChainTxStatus.Status == pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED {
-		//				err = Stub.PutPrivateData(write, lock.UpdatingState)
-		//				if err != nil {
-		//					return false, err
-		//				}
-		//			} else {
-		//				err = Stub.PutState(write.Key, lock.PrevState)
-		//				if err != nil {
-		//					return false, err
-		//				}
-		//			}
-		//		}
-		//	}
-		//
-		//	// private metadata updates
-		//	if c.HashedRwSet != nil && len(c.HashedRwSet.MetadataWrites) > 0 {
-		//		return true
-		//	}
-		//}
+	// cannot implement private data and metadata lock
+	//for _, c := range ns.CollHashedRwSets {
+	//	if c.HashedRwSet != nil && len(c.HashedRwSet.HashedWrites) > 0 {
+	//		for _, write := range c.HashedRwSet.HashedWrites {
+	//			lock := &pb.Lock{}
+	//			err = proto.Unmarshal(write.ValueHash, lock)
+	//			if err != nil {
+	//				return false, err
+	//			}
+	//			if crossChainTxStatus.Status == pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED {
+	//				err = Stub.PutPrivateData(write, lock.UpdatingState)
+	//				if err != nil {
+	//					return false, err
+	//				}
+	//			} else {
+	//				err = Stub.PutState(write.Key, lock.PrevState)
+	//				if err != nil {
+	//					return false, err
+	//				}
+	//			}
+	//		}
+	//	}
+	//
+	//	// private metadata updates
+	//	if c.HashedRwSet != nil && len(c.HashedRwSet.MetadataWrites) > 0 {
+	//		return true
+	//	}
+	//}
 
-		//if ns.KvRwSet != nil && len(ns.KvRwSet.MetadataWrites) > 0 {
-		//	for _, write := range ns.KvRwSet.MetadataWrites {
-		//		lock := &pb.Lock{}
-		//		err = proto.Unmarshal(write.Entries, lock)
-		//		if err != nil {
-		//			return false, err
-		//		}
-		//		if crossChainTxStatus.Status == pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED {
-		//			err = Stub.PutState(write.Key, lock.UpdatingState)
-		//			if err != nil {
-		//				return false, err
-		//			}
-		//		} else {
-		//			err = Stub.PutState(write.Key, lock.PrevState)
-		//			if err != nil {
-		//				return false, err
-		//			}
-		//		}
-		//	}
-		//}
+	//if ns.KvRwSet != nil && len(ns.KvRwSet.MetadataWrites) > 0 {
+	//	for _, write := range ns.KvRwSet.MetadataWrites {
+	//		lock := &pb.Lock{}
+	//		err = proto.Unmarshal(write.Entries, lock)
+	//		if err != nil {
+	//			return false, err
+	//		}
+	//		if crossChainTxStatus.Status == pb.GlobalTransactionStatusType_PRIMARY_TRANSACTION_COMMITTED {
+	//			err = Stub.PutState(write.Key, lock.UpdatingState)
+	//			if err != nil {
+	//				return false, err
+	//			}
+	//		} else {
+	//			err = Stub.PutState(write.Key, lock.PrevState)
+	//			if err != nil {
+	//				return false, err
+	//			}
+	//		}
+	//	}
+	//}
 	//}
 
 	return nil

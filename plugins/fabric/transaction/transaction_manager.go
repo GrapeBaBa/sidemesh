@@ -169,6 +169,7 @@ func (gtxm *GlobalTransactionManagerImpl) PreparePrimaryTransaction() error {
 		if err != nil {
 			return err
 		}
+		fmt.Println(len(writeKeySet))
 		fmt.Println("wset")
 		fmt.Println(buf.Bytes())
 		err = gtxm.stub.PutState(xidKey+":wset", buf.Bytes())

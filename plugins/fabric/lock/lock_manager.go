@@ -268,12 +268,12 @@ func (lockManager *ManagerImpl) putWriteKey(key string) error {
 		return err
 	}
 	xidKey := sidemesh.Prefix + string(network) + lockManager.Stub.GetChannelID() + lockManager.Stub.GetTxID()
-	writeKeySet, ok := lockManager.WriteKeySet[xidKey]
+	_, ok := lockManager.WriteKeySet[xidKey]
 	if !ok {
-		writeKeySet = []string{key}
+		writeKeySet := []string{key}
 		lockManager.WriteKeySet[xidKey] = writeKeySet
 	} else {
-		writeKeySet = append(writeKeySet, key)
+		lockManager.WriteKeySet[xidKey] = append(lockManager.WriteKeySet[xidKey], key)
 	}
 
 	return nil
